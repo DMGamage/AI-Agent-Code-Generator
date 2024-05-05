@@ -9,6 +9,7 @@ from code_reader import code_reader # type: ignore
 from pydantic import BaseModel
 from llama_index.core.output_parsers import PydanticOutputParser
 from llama_index.core.query_pipeline import QueryPipeline
+import ast
 
 
 context = """Purpose: The primary role of this agent is to assist users by analyzing code. It should
@@ -59,9 +60,34 @@ json_prompt_tmpl = PromptTemplate(json_prompt_str)
 output_pipeline = QueryPipeline(chain=[json_prompt_tmpl, llm])
 
 while (prompt := input("Enter a prompt (q to quit): ")) != "q":
+    retries = 0
 
-    result = agent.query(prompt)
-    print(result)
+    while retries < 3:
+        try:
+            result = agent.query(prompt)
+            next_result = output_pipeline.run(response=result)
+            cleaned_json = ast.literal_eval(str(next_result).replace("assistant:", ""))
+            break
+        except Exception as e:
+            retries += 1
+            print(f"Error occured, retry #{retries}:", e)
+
+    if retries >= 3:
+        print("Unable to process request, try again...")
+        continue
+
+    print("Code generated")
+    print(cleaned_json["code"])
+    print("\n\nDesciption:", cleaned_json["description"])
+
+    filename = cleaned_json["filename"]
+
+    try:
+        with open(os.path.join("output", filename), "w") as f:
+            f.write(cleaned_json["code"])
+        print("Saved file", filename)
+    except:
+        print("Error saving file...")
 
 
 
